@@ -1,0 +1,56 @@
+Developed by Google researchers, T5 is a large-scale transformer-based language model that has achieved state-of-the-art results on various NLP tasks, including text summarization.
+
+T5 is an encoder-decoder model that is pre-trained on a mixture of unsupervised and supervised tasks in a multi-task setting. They converted each task into a text-to-text format, enabling T5 to work well on a variety of tasks out of the box. The model achieves this by adding a different prefix to the input corresponding to each task. For example, to use T5 for translation, one would input “translate English to German: …” whereas for summarization, one would input “summarize: …”.
+
+The ability of T5 to perform multiple NLP tasks by simply changing the prefix of the input is a significant advantage. Additionally, its performance on various tasks has made it one of the most promising approaches for NLP applications. As the model is pre-trained on a mixture of unsupervised and supervised tasks, it has the potential to generalize well to new tasks.
+
+One of the most exciting applications of T5 is in text summarization. Summarizing lengthy documents while preserving the most relevant information is a challenging task, but T5 has achieved impressive results in this area. By inputting the text to be summarized with the prefix “summarize:”, T5 can generate a concise summary that captures the essence of the original document. This is useful for applications such as news articles, scientific papers, and legal documents.
+
+T5 comes in different sizes:
+
+t5-small
+t5-base
+t5-large
+t5–3b
+t5–11b.
+
+various tasks T5 is able to perform
+The T5 model unifies both NLU and NLG tasks by converting them into sequence-to-sequence tasks in the encoder-decoder variant. For the text classification problem, this means that they used the text as the encoder input and the decoder has to generate the label as normal text instead of a class.
+
+T5 architecture is the original Transformer architecture that is trained on the large crawled C4 dataset. Masked language modeling is used as a method for training. The largest model of T5 class has 11 billion parameters that achieved SOTA results on several benchmarks.
+
+Now, let us proceed with running the code.
+
+Get Iva Vrtaric @ Tesla Institute’s stories in your inbox
+Join Medium for free to get updates from this writer.
+
+Enter your email
+Subscribe
+First, we will need to pip install Pytorch and Transformers library
+
+!pip install torch transformers
+And import the libraries:
+
+import torch
+from transformers import AutoTokenizer, AutoModelWithLMHead
+The AutoTokenizer and AutoModelWithLMHeadclasses from the transformers library are being imported, which will be used later in the code for creating an instance of a pre-trained transformer-based model and its tokenizer.
+
+tokenizer=AutoTokenizer.from_pretrained('T5-base')
+model=AutoModelWithLMHead.from_pretrained('T5-base', return_dict=True)
+We have to make sure we put the return_dict=True parameter that is passed to the from_pretrained()method.
+
+sequence = ("Data science is an interdisciplinary field[10] focused on extracting knowledge from typically large data sets and applying the knowledge and insights from that data to solve problems in a wide range of application domains.[11] The field encompasses preparing data for analysis, formulating data science problems, analyzing data, developing data-driven solutions, and presenting findings to inform high-level decisions in a broad range of application domains. As such, it incorporates skills from computer science, statistics, information science, mathematics, data visualization, information visualization, data sonification, data integration, graphic design, complex systems, communication and business.[12][13] Statistician Nathan Yau, drawing on Ben Fry, also links data science to human–computer interaction: users should be able to intuitively control and explore data.[14][15] In 2015, the American Statistical Association identified database management, statistics and machine learning, and distributed and parallel systems as the three emerging foundational professional communities.[16]")
+As a sequence we’ll insert a passage from Wikipedia about Data Science.
+
+inputs=tokenizer.encode("sumarize: " +sequence,return_tensors='pt', max_length=512, truncation=True)
+return_tensors='pt': this specifies that the encoded sequence should be returned as a PyTorch tensor object.
+max_length=512: this sets the maximum length of the encoded sequence to 512 tokens. If the input sequence is longer than this, it will be truncated.
+truncation=True: this specifies that any tokens in the input sequence that exceed the maximum length should be truncated.
+The resulting inputs tensor can then be passed to the T5 model for summarization.
+
+output = model.generate(inputs, min_length=80, max_length=100)
+summary=tokenizer.decode(output[0])
+print(summary)
+the output summary:
+
+“data science is an interdisciplinary field focused on extracting knowledge from typically large data sets. it incorporates skills from computer science, statistics, information science, mathematics, data visualization, information visualization, data sonification, graphic design, complex systems, communication and business”
