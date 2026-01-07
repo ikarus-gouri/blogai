@@ -89,7 +89,7 @@ class blogsummarizer:
         print("Using Gemini for summarization...")
         prompt = f"Summarize the following text in 80-150 words:\n\n{text}"
         response = self.client.models.generate_content(
-            model='gemini-2.0-flash-exp',
+            model='gemini-3-flash-preview',
             contents=prompt
         )
         return [{"summary_text": response.text}]
