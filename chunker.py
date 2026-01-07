@@ -4,7 +4,7 @@ from typing import List
 #using overlapping chunker to save context for summarization
 def overlapping_chunk_by_sentences(
     text: str,
-    max_chunk_size: int = 900,
+    max_chunk_size: int = 1000,
     overlap_sentences: int = 2
 ) -> List[str]:
     sentences = re.split(r'(?<=[.!?])\s+', text.strip())

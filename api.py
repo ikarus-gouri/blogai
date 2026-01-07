@@ -58,19 +58,66 @@ def summarize_text():
             return jsonify({'error': 'Text field is required'}), 400
         
         text = data['text']
+        strategy = data.get('strategy', 'auto')
         
         if not text or len(text.strip()) == 0:
             return jsonify({'error': 'Text cannot be empty'}), 400
         
-        result = summarizer.summarize(text)
+        result = summarizer.summarize(text, strategy=strategy)
         summary = result[0]['summary_text']
         
-        return jsonify({
+        response_data = {
             'success': True,
             'summary': summary,
+            'strategy_used': strategy,
             'original_length': len(text),
-            'used_model': 'Gemini' if len(text) > 1024 else 'BART'
-        }), 200
+            'summary_length': len(summary)
+        }
+        
+        if 'metadata' in result[0]:
+            response_data['chunk_info'] = result[0]['metadata']
+        
+        return jsonify(response_data), 200
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/summarize-chunked', methods=['POST'])
+def summarize_chunked():
+    try:
+        data = request.get_json()
+        
+        if not data or 'text' not in data:
+            return jsonify({'error': 'Text field is required'}), 400
+        
+        text = data['text']
+        strategy = data.get('strategy', 'auto')
+        
+        if len(text) <= 1024:
+            return jsonify({
+                'error': 'Text is too short for chunked summarization. Use /api/summarize instead'
+            }), 400
+        
+        result = summarizer._chunked_summarize(text, strategy)
+        summary = result[0]['summary_text']
+        
+        response_data = {
+            'success': True,
+            'summary': summary,
+            'strategy_used': strategy,
+            'original_length': len(text),
+            'summary_length': len(summary),
+            'method': 'chunked'
+        }
+        
+        if 'metadata' in result[0]:
+            response_data['chunk_info'] = result[0]['metadata']
+        
+        return jsonify(response_data), 200
         
     except Exception as e:
         return jsonify({
@@ -90,12 +137,13 @@ def process_blog():
         text = data['text']
         blog_id = data.get('blog_id')
         send_to_backend = data.get('send_to_backend', False)
+        strategy = data.get('strategy', 'auto')
         
         if not text or len(text.strip()) == 0:
             return jsonify({'error': 'Text cannot be empty'}), 400
         
         classifications = classifier.classify(text)
-        summary_result = summarizer.summarize(text)
+        summary_result = summarizer.summarize(text, strategy=strategy)
         summary = summary_result[0]['summary_text']
         
         response_data = {
@@ -105,21 +153,27 @@ def process_blog():
             'metadata': {
                 'original_length': len(text),
                 'summary_length': len(summary),
-                'model_used': 'Gemini' if len(text) > 1024 else 'BART',
+                'strategy_used': strategy,
                 'num_categories': len(classifications)
             }
         }
         
+        if 'metadata' in summary_result[0]:
+            response_data['metadata']['chunk_info'] = summary_result[0]['metadata']
+        
         if send_to_backend and blog_id:
             try:
+                backend_service.update_blog_status(blog_id, "processing")
                 backend_response = backend_service.send_processing_result(
                     blog_id=blog_id,
                     classifications=classifications,
                     summary=summary,
                     metadata=response_data['metadata']
                 )
+                backend_service.update_blog_status(blog_id, "completed")
                 response_data['backend_response'] = backend_response
             except Exception as backend_error:
+                backend_service.update_blog_status(blog_id, "failed")
                 response_data['backend_error'] = str(backend_error)
         
         return jsonify(response_data), 200
@@ -137,6 +191,7 @@ def fetch_and_process():
             return jsonify({'error': 'blog_id field is required'}), 400
         
         blog_id = data['blog_id']
+        strategy = data.get('strategy', 'auto')
         
         blog_data = backend_service.fetch_blog_content(blog_id)
         text = blog_data.get('content', '')
@@ -147,13 +202,13 @@ def fetch_and_process():
         backend_service.update_blog_status(blog_id, "processing")
         
         classifications = classifier.classify(text)
-        summary_result = summarizer.summarize(text)
+        summary_result = summarizer.summarize(text, strategy=strategy)
         summary = summary_result[0]['summary_text']
         
         metadata = {
             'original_length': len(text),
             'summary_length': len(summary),
-            'model_used': 'Gemini' if len(text) > 1024 else 'BART',
+            'strategy_used': strategy,
             'num_categories': len(classifications)
         }
         
@@ -189,9 +244,9 @@ def fetch_and_process():
 def check_backend_health():
     try:
         health = backend_service.health_check()
-        return jsonify({'success': True, 'backend_status': health}), 200
+        return jsonify({'success': True, 'backend_health': health}), 200
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': str(e)}), 503
 
 
 if __name__ == '__main__':
