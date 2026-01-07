@@ -1,7 +1,7 @@
 import re
 from typing import List
 
-
+#using overlapping chunker to save context for summarization
 def overlapping_chunk_by_sentences(
     text: str,
     max_chunk_size: int = 900,

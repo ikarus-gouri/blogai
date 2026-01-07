@@ -1,15 +1,19 @@
-summarizer:
-Facebooks BART Model used as primary summarizer (transformer based model)
-max length of blog 1024 thus kept geminai as fallback and to handel larger conten
-other solution is chunking though:
-types of chunking character chunking might result in context loss due to chunking from middle of the word or sentence
-thus using overlapping chunking with . as identifier to chunck sentences as whole and avoid splitting sentences
-why not semantic chunking too expensive as already dealing with the BART Model thus to save computation
+# AI Blog Processing Service
 
-classifier/ categorizer:
-used vertorization
-to check the cosine similarity= confidence
-based on the cnfidence the blog is categorized
+## Overview
+blog summarization and classification capabilities.
+
+### Summarizer
+- **Primary Model**: Facebook's BART (transformer-based)
+- **Max Input**: 1024 tokens
+- **Fallback**: Gemini AI for larger content
+- **Chunking Strategy**: Overlapping sentence chunking to preserve context
+- Avoids character chunking to prevent context loss
+- No semantic chunking to reduce computational overhead
+
+### Classifier
+- **Method**: Cosine similarity with vectorization
+- **Output**: Categories with confidence scores
 
 required
 # Required Django Backend Endpoints
