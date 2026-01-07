@@ -4,13 +4,22 @@ from classifier import TextClassifier
 # from dynamic_updater import add_keywords_by_similarity, save_categories_to_file, keyword_exists
 from labels import CATEGORIES
 from summarizer import blogsummarizer
+from services import DjangoBackendService
 import json
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
 
 classifier = TextClassifier()
 summarizer = blogsummarizer()
+
+# Initialize Django backend service
+DJANGO_BACKEND_URL = os.getenv("DJANGO_BACKEND_URL", "http://localhost:8000")
+backend_service = DjangoBackendService(base_url=DJANGO_BACKEND_URL)
 
 @app.route('/api/classify', methods=['POST'])
 def classify_text():
@@ -21,19 +30,12 @@ def classify_text():
             return jsonify({'error': 'Text field is required'}), 400
         
         text = data['text']
-        auto_update = data.get('auto_update', False)
         
         result = classifier.classify(text)
         
-        if auto_update and result['similar_new_keywords']:
-            add_keywords_by_similarity(
-                result['similar_new_keywords'],
-                result['false_positives']
-            )
-        
         return jsonify({
             'success': True,
-            'classifications': result['classifications']
+            'classifications': result
         }), 200
         
     except Exception as e:
@@ -75,6 +77,122 @@ def summarize_text():
             'success': False,
             'error': str(e)
         }), 500
+
+
+@app.route('/api/process-blog', methods=['POST'])
+def process_blog():
+    try:
+        data = request.get_json()
+        
+        if not data or 'text' not in data:
+            return jsonify({'error': 'Text field is required'}), 400
+        
+        text = data['text']
+        blog_id = data.get('blog_id')
+        send_to_backend = data.get('send_to_backend', False)
+        
+        if not text or len(text.strip()) == 0:
+            return jsonify({'error': 'Text cannot be empty'}), 400
+        
+        classifications = classifier.classify(text)
+        summary_result = summarizer.summarize(text)
+        summary = summary_result[0]['summary_text']
+        
+        response_data = {
+            'success': True,
+            'classifications': classifications,
+            'summary': summary,
+            'metadata': {
+                'original_length': len(text),
+                'summary_length': len(summary),
+                'model_used': 'Gemini' if len(text) > 1024 else 'BART',
+                'num_categories': len(classifications)
+            }
+        }
+        
+        if send_to_backend and blog_id:
+            try:
+                backend_response = backend_service.send_processing_result(
+                    blog_id=blog_id,
+                    classifications=classifications,
+                    summary=summary,
+                    metadata=response_data['metadata']
+                )
+                response_data['backend_response'] = backend_response
+            except Exception as backend_error:
+                response_data['backend_error'] = str(backend_error)
+        
+        return jsonify(response_data), 200
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/fetch-and-process', methods=['POST'])
+def fetch_and_process():
+    try:
+        data = request.get_json()
+        
+        if not data or 'blog_id' not in data:
+            return jsonify({'error': 'blog_id field is required'}), 400
+        
+        blog_id = data['blog_id']
+        
+        blog_data = backend_service.fetch_blog_content(blog_id)
+        text = blog_data.get('content', '')
+        
+        if not text:
+            return jsonify({'error': 'No content found in blog'}), 400
+        
+        backend_service.update_blog_status(blog_id, "processing")
+        
+        classifications = classifier.classify(text)
+        summary_result = summarizer.summarize(text)
+        summary = summary_result[0]['summary_text']
+        
+        metadata = {
+            'original_length': len(text),
+            'summary_length': len(summary),
+            'model_used': 'Gemini' if len(text) > 1024 else 'BART',
+            'num_categories': len(classifications)
+        }
+        
+        backend_response = backend_service.send_processing_result(
+            blog_id=blog_id,
+            classifications=classifications,
+            summary=summary,
+            metadata=metadata
+        )
+        
+        backend_service.update_blog_status(blog_id, "completed")
+        
+        return jsonify({
+            'success': True,
+            'blog_id': blog_id,
+            'classifications': classifications,
+            'summary': summary,
+            'metadata': metadata,
+            'backend_response': backend_response
+        }), 200
+        
+    except Exception as e:
+        try:
+            if 'blog_id' in locals():
+                backend_service.update_blog_status(blog_id, "failed")
+        except:
+            pass
+        
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/backend-health', methods=['GET'])
+def check_backend_health():
+    try:
+        health = backend_service.health_check()
+        return jsonify({'success': True, 'backend_status': health}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

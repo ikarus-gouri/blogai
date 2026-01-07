@@ -32,7 +32,8 @@ class blogsummarizer:
                 raise Exception("Text exceeds 1024 characters but Gemini API key not configured")
         
         try:
-            result = self.summarizer(text, max_length=150, min_length=80, do_sample=False)
+            
+            result = self.summarizer(text, max_length=min(150,len(text)), min_length=min(80,len(text)), do_sample=False)
             return result
         except Exception as e:
             print(f"BART model failed: {str(e)}")
