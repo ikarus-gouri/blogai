@@ -1,11 +1,4 @@
----
-title: BlogAI Microservice
-colorFrom: blue
-colorTo: green
-sdk: docker
-pinned: false
-app_port: 7860
----
+
 
 # BlogAI Microservice
 

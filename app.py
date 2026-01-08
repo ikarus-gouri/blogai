@@ -15,6 +15,7 @@ CORS(app)
 
 classifier = TextClassifier()
 summarizer = blogsummarizer()
+keyword_extractor = KeywordExtractor()
 
 @app.route("/", methods=["GET"])
 def health():
@@ -52,29 +53,138 @@ def analyse_blog():
 
 
 
-@app.route('/api/extract-keywords', methods=['POST'])
-def extract_keywords():
+@app.route('/api/keywords/extract', methods=['POST'])
+def extract_new_keywords():
+    """
+    Extract new keywords from blog content and optionally add them to labels.py
+    
+    Request body:
+    {
+        "title": "Blog Title",
+        "content": "Full blog content...",
+        "category": "Technology",
+        "confidence": 0.85,
+        "auto_add": true,
+        "min_uniqueness_score": 0.2
+    }
+    """
     try:
         data = request.get_json()
         
-        if not data or 'text' not in data or 'category' not in data:
-            return jsonify({'error': 'Text and category required'}), 400
+        # Validate required fields
+        if not data:
+            return jsonify({'error': 'Invalid JSON'}), 400
         
-        text = data['text']
-        category = data['category']
+        content = data.get('content')
+        category = data.get('category')
+        
+        if not content:
+            return jsonify({'error': 'Content is required'}), 400
+        
+        if not category:
+            return jsonify({'error': 'Category is required'}), 400
+        
+        if category not in CATEGORIES:
+            return jsonify({'error': f'Invalid category: {category}'}), 400
+        
+        # Optional parameters
         auto_add = data.get('auto_add', False)
-        min_uniqueness = data.get('min_uniqueness_score', 0.2)
+        min_uniqueness_score = data.get('min_uniqueness_score', 0.2)
+        confidence = data.get('confidence', 0.0)
+        title = data.get('title', '')
         
-        result = extract_and_update_keywords(
-            text, 
-            category, 
-            auto_add=auto_add,
-            min_uniqueness_score=min_uniqueness
-        )
+        # Extract keywords
+        result = keyword_extractor.extract_new_keywords(content, category, top_n=20)
+        
+        # Auto-add keywords if requested
+        added_keywords = []
+        if auto_add and result.get("new_keywords"):
+            # Filter by uniqueness score
+            keywords_to_add = [
+                kw["keyword"] for kw in result["new_keywords"]
+                if kw["uniqueness_score"] >= min_uniqueness_score and kw["is_unique"]
+            ]
+            
+            if keywords_to_add:
+                # Add to category
+                add_result = keyword_extractor.add_keywords_to_category(
+                    category, 
+                    keywords_to_add
+                )
+                added_keywords = add_result.get('added_keywords', [])
+                
+                # Save to labels.py
+                save_result = keyword_extractor.save_updated_categories(filepath="labels.py")
+                
+                # Reload CATEGORIES in memory
+                import importlib
+                import labels
+                importlib.reload(labels)
+                from labels import CATEGORIES as UPDATED_CATEGORIES
+                
+                result['keywords_added'] = {
+                    'count': len(added_keywords),
+                    'keywords': added_keywords,
+                    'total_keywords_now': len(UPDATED_CATEGORIES[category]),
+                    'saved_to_file': True
+                }
         
         return jsonify({
             'success': True,
-            'result': result
+            'category': category,
+            'confidence': confidence,
+            'title': title,
+            'extraction_result': {
+                'new_keywords_found': result.get('new_keywords', []),
+                'total_candidates_analyzed': result.get('total_candidates_analyzed', 0),
+                'unique_keywords_found': result.get('unique_keywords_found', 0)
+            },
+            'keywords_added': result.get('keywords_added', {
+                'count': 0,
+                'keywords': [],
+                'saved_to_file': False
+            })
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/keywords/add', methods=['POST'])
+def add_keywords_manually():
+    """
+    Manually add keywords to a category
+    
+    Request body:
+    {
+        "category": "Technology",
+        "keywords": ["machine learning", "artificial intelligence"]
+    }
+    """
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'error': 'Invalid JSON'}), 400
+        
+        category = data.get('category')
+        keywords = data.get('keywords', [])
+        
+        if not category or not keywords:
+            return jsonify({'error': 'Category and keywords are required'}), 400
+        
+        if category not in CATEGORIES:
+            return jsonify({'error': f'Invalid category: {category}'}), 400
+        
+        # Add keywords
+        add_result = keyword_extractor.add_keywords_to_category(category, keywords)
+        
+        # Save to labels.py
+        keyword_extractor.save_updated_categories(filepath="labels.py")
+        
+        return jsonify({
+            'success': True,
+            'result': add_result
         }), 200
         
     except Exception as e:

@@ -143,16 +143,21 @@ class KeywordExtractor:
         }
     
     def save_updated_categories(self, filepath="labels_updated.py"):
+        """Save updated categories back to labels.py file"""
         with open(filepath, 'w', encoding='utf-8') as f:
+            f.write("# Auto-generated categories file\n")
+            f.write("# Last updated by KeywordExtractor\n\n")
             f.write("CATEGORIES = {\n")
             for category, keywords in self.categories.items():
                 f.write(f'    "{category}": [\n')
                 for keyword in keywords:
-                    f.write(f'        "{keyword}",\n')
+                    # Escape quotes in keywords
+                    escaped_keyword = keyword.replace('"', '\\"')
+                    f.write(f'        "{escaped_keyword}",\n')
                 f.write("    ],\n")
             f.write("}\n")
         
-        return {"message": f"Categories saved to {filepath}"}
+        return {"message": f"Categories saved to {filepath}", "success": True}
 
 
 def extract_and_update_keywords(text, assigned_category, auto_add=False, 
