@@ -20,9 +20,11 @@ summarizer = blogsummarizer()
 def health():
     return {"status": "BlogAI API is running"}, 200
 
+@app.route("/api/categories", methods=["GET"])
+def get_categories():
+    return jsonify({"categories": CATEGORIES}), 200
 
-
-@app.route('/api/analyse-blog', methods=['POST'])
+@app.route('/api/blog', methods=['POST'])
 def analyse_blog():
     try: 
         data= request.get_json()
