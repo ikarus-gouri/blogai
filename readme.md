@@ -14,61 +14,25 @@ blog summarization and classification capabilities.
 ### Classifier
 - **Method**: Cosine similarity with vectorization
 - **Output**: Categories with confidence scores
+---
+title: BlogAI Microservice
+emoji: 📝
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+app_port: 7860
+---
 
-required
-# Required Django Backend Endpoints
+# BlogAI Microservice
 
-## 1. Save Classification Results
-**POST** `/api/classification/save/`
-```json
-{
-  "blog_id": "string",
-  "classifications": [
-    {"label": "string", "confidence": 0.95}
-  ]
-}
-```
+AI-powered blog analysis service with:
+- Text classification
+- Summarization (BART + Gemini fallback)
+- Keyword extraction
 
-## 2. Save Summary Results
-**POST** `/api/summary/save/`
-```json
-{
-  "blog_id": "string",
-  "summary": "string",
-  "metadata": {}
-}
-```
-
-## 3. Fetch Blog Content
-**GET** `/api/blog/{blog_id}/`
-Response:
-```json
-{
-  "id": "string",
-  "title": "string",
-  "content": "string"
-}
-```
-
-## 4. Update Blog Status
-**PUT** `/api/blog/{blog_id}/status/`
-```json
-{
-  "status": "processing|completed|failed"
-}
-```
-
-## 5. Save Complete Processing Result
-**POST** `/api/blog/process-result/`
-```json
-{
-  "blog_id": "string",
-  "classifications": [],
-  "summary": "string",
-  "metadata": {}
-}
-```
-
-## 6. Health Check
-**GET** `/api/health/`
-Response: `{"status": "ok"}`
+## API Endpoints
+- POST `/api/analyse-blog` - Full analysis
+- POST `/api/classify` - Classification only
+- POST `/api/summarize` - Summarization only
+- GET `/api/health` - Health check

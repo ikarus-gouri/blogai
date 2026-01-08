@@ -1,3 +1,69 @@
+# AI Blog Processing Service
+
+## Overview
+blog summarization and classification capabilities.
+
+### Summarizer
+- **Primary Model**: Facebook's BART (transformer-based)
+- **Max Input**: 1024 tokens
+- **Fallback**: Gemini AI for larger content
+- **Chunking Strategy**: Overlapping sentence chunking to preserve context
+- Avoids character chunking to prevent context loss
+- No semantic chunking to reduce computational overhead
+
+### Classifier
+- **Method**: Cosine similarity with vectorization
+- **Output**: Categories with confidence scores
+---
+title: BlogAI Microservice
+emoji: 📝
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+app_port: 7860
+---
+
+# BlogAI Microservice
+
+AI-powered blog analysis service with:
+- Text classification
+- Summarization (BART + Gemini fallback)
+- Keyword extraction
+
+## API Endpoints
+- POST `/api/analyse-blog` - Full analysis
+- POST `/api/classify` - Classification only
+- POST `/api/summarize` - Summarization only
+- GET `/api/health` - Health check
+
+
+
+/venv
+/__pycache__
+.env
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Developed by Google researchers, T5 is a large-scale transformer-based language model that has achieved state-of-the-art results on various NLP tasks, including text summarization.
 
 T5 is an encoder-decoder model that is pre-trained on a mixture of unsupervised and supervised tasks in a multi-task setting. They converted each task into a text-to-text format, enabling T5 to work well on a variety of tasks out of the box. The model achieves this by adding a different prefix to the input corresponding to each task. For example, to use T5 for translation, one would input “translate English to German: …” whereas for summarization, one would input “summarize: …”.

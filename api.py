@@ -1,10 +1,9 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from classifier import TextClassifier
-# from dynamic_updater import add_keywords_by_similarity, save_categories_to_file, keyword_exists
 from labels import CATEGORIES
 from summarizer import blogsummarizer
-from services import DjangoBackendService
+from keyword_extractor import KeywordExtractor, extract_and_update_keywords
 import json
 import os
 from dotenv import load_dotenv
@@ -17,236 +16,249 @@ CORS(app)
 classifier = TextClassifier()
 summarizer = blogsummarizer()
 
-# Initialize Django backend service
-DJANGO_BACKEND_URL = os.getenv("DJANGO_BACKEND_URL", "http://localhost:8000")
-backend_service = DjangoBackendService(base_url=DJANGO_BACKEND_URL)
 
-@app.route('/api/classify', methods=['POST'])
-def classify_text():
-    try:
-        data = request.get_json()
+@app.route('/api/analyse-blog', methods=['POST'])
+def analyse_blog():
+    try: 
+        data= request.get_json()
+        if not data:
+            return jsonify({'error':"invalid json"}),400
         
-        if not data or 'text' not in data:
-            return jsonify({'error': 'Text field is required'}), 400
-        
-        text = data['text']
-        
-        result = classifier.classify(text)
-        
-        return jsonify({
-            'success': True,
-            'classifications': result
-        }), 200
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/health', methods=['GET'])
-def health_check():
-    return jsonify({
-        'status': 'healthy',
-        'service': 'Blog Classification API'
-    }), 200
-
-@app.route('/api/summarize', methods=['POST'])
-def summarize_text():
-    try:
-        data = request.get_json()
-        
-        if not data or 'text' not in data:
-            return jsonify({'error': 'Text field is required'}), 400
-        
-        text = data['text']
-        strategy = data.get('strategy', 'auto')
-        
-        if not text or len(text.strip()) == 0:
-            return jsonify({'error': 'Text cannot be empty'}), 400
-        
-        result = summarizer.summarize(text, strategy=strategy)
-        summary = result[0]['summary_text']
-        
-        response_data = {
-            'success': True,
-            'summary': summary,
-            'strategy_used': strategy,
-            'original_length': len(text),
-            'summary_length': len(summary)
-        }
-        
-        if 'metadata' in result[0]:
-            response_data['chunk_info'] = result[0]['metadata']
-        
-        return jsonify(response_data), 200
-        
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-
-@app.route('/api/summarize-chunked', methods=['POST'])
-def summarize_chunked():
-    try:
-        data = request.get_json()
-        
-        if not data or 'text' not in data:
-            return jsonify({'error': 'Text field is required'}), 400
-        
-        text = data['text']
-        strategy = data.get('strategy', 'auto')
-        
-        if len(text) <= 1024:
-            return jsonify({
-                'error': 'Text is too short for chunked summarization. Use /api/summarize instead'
-            }), 400
-        
-        result = summarizer._chunked_summarize(text, strategy)
-        summary = result[0]['summary_text']
-        
-        response_data = {
-            'success': True,
-            'summary': summary,
-            'strategy_used': strategy,
-            'original_length': len(text),
-            'summary_length': len(summary),
-            'method': 'chunked'
-        }
-        
-        if 'metadata' in result[0]:
-            response_data['chunk_info'] = result[0]['metadata']
-        
-        return jsonify(response_data), 200
-        
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-
-@app.route('/api/process-blog', methods=['POST'])
-def process_blog():
-    try:
-        data = request.get_json()
-        
-        if not data or 'text' not in data:
-            return jsonify({'error': 'Text field is required'}), 400
-        
-        text = data['text']
-        blog_id = data.get('blog_id')
-        send_to_backend = data.get('send_to_backend', False)
-        strategy = data.get('strategy', 'auto')
-        
-        if not text or len(text.strip()) == 0:
-            return jsonify({'error': 'Text cannot be empty'}), 400
-        
-        classifications = classifier.classify(text)
-        summary_result = summarizer.summarize(text, strategy=strategy)
-        summary = summary_result[0]['summary_text']
-        
-        response_data = {
-            'success': True,
-            'classifications': classifications,
-            'summary': summary,
-            'metadata': {
-                'original_length': len(text),
-                'summary_length': len(summary),
-                'strategy_used': strategy,
-                'num_categories': len(classifications)
-            }
-        }
-        
-        if 'metadata' in summary_result[0]:
-            response_data['metadata']['chunk_info'] = summary_result[0]['metadata']
-        
-        if send_to_backend and blog_id:
-            try:
-                backend_service.update_blog_status(blog_id, "processing")
-                backend_response = backend_service.send_processing_result(
-                    blog_id=blog_id,
-                    classifications=classifications,
-                    summary=summary,
-                    metadata=response_data['metadata']
-                )
-                backend_service.update_blog_status(blog_id, "completed")
-                response_data['backend_response'] = backend_response
-            except Exception as backend_error:
-                backend_service.update_blog_status(blog_id, "failed")
-                response_data['backend_error'] = str(backend_error)
-        
-        return jsonify(response_data), 200
-        
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/api/fetch-and-process', methods=['POST'])
-def fetch_and_process():
-    try:
-        data = request.get_json()
-        
-        if not data or 'blog_id' not in data:
-            return jsonify({'error': 'blog_id field is required'}), 400
-        
-        blog_id = data['blog_id']
-        strategy = data.get('strategy', 'auto')
-        
-        blog_data = backend_service.fetch_blog_content(blog_id)
-        text = blog_data.get('content', '')
-        
+        title=data.get('title')
+        text=data.get('content')
         if not text:
-            return jsonify({'error': 'No content found in blog'}), 400
+            return jsonify({'error':'content field is required'}),400
+
+        categories=classifier.classify(text)
+
+        summary_result=summarizer.summarize(text)
+        summary=summary_result[0].get('summary_text')
+
+        return jsonify({
+            'success':True,
+            'summary':summary,
+            'classifications':categories
+        }),200
+
+    except Exception as e:
+        return jsonify({'error':str(e)}),500
+
+
+
+
+#========================================================================================================================
+#========================================================================================================================
+#========================================================================================================================
+
+
+# @app.route('/api/classify', methods=['POST'])
+# def classify_text():
+#     try:
+#         data = request.get_json()
         
-        backend_service.update_blog_status(blog_id, "processing")
+#         if not data or 'text' not in data:
+#             return jsonify({'error': 'Text field is required'}), 400
         
-        classifications = classifier.classify(text)
-        summary_result = summarizer.summarize(text, strategy=strategy)
-        summary = summary_result[0]['summary_text']
+#         text = data['text']
         
-        metadata = {
-            'original_length': len(text),
-            'summary_length': len(summary),
-            'strategy_used': strategy,
-            'num_categories': len(classifications)
-        }
+#         result = classifier.classify(text)
         
-        backend_response = backend_service.send_processing_result(
-            blog_id=blog_id,
-            classifications=classifications,
-            summary=summary,
-            metadata=metadata
+#         return jsonify({
+#             'success': True,
+#             'classifications': result
+#         }), 200
+        
+#     except Exception as e:
+#         return jsonify({'error': str(e)}), 500
+
+
+# @app.route('/api/health', methods=['GET'])
+# def health_check():
+#     return jsonify({
+#         'status': 'healthy',
+#         'service': 'Blog Classification API'
+#     }), 200
+
+# @app.route('/api/summarize', methods=['POST'])
+# def summarize_text():
+#     try:
+#         data = request.get_json()
+        
+#         if not data or 'text' not in data:
+#             return jsonify({'error': 'Text field is required'}), 400
+        
+#         text = data['text']
+#         strategy = data.get('strategy', 'auto')
+        
+#         if not text or len(text.strip()) == 0:
+#             return jsonify({'error': 'Text cannot be empty'}), 400
+        
+#         result = summarizer.summarize(text, strategy=strategy)
+#         summary = result[0]['summary_text']
+        
+#         response_data = {
+#             'success': True,
+#             'summary': summary,
+#             'strategy_used': strategy,
+#             'original_length': len(text),
+#             'summary_length': len(summary)
+#         }
+        
+#         if 'metadata' in result[0]:
+#             response_data['chunk_info'] = result[0]['metadata']
+        
+#         return jsonify(response_data), 200
+        
+#     except Exception as e:
+#         return jsonify({
+#             'success': False,
+#             'error': str(e)
+#         }), 500
+
+
+# @app.route('/api/summarize-chunked', methods=['POST'])
+# def summarize_chunked():
+#     try:
+#         data = request.get_json()
+        
+#         if not data or 'text' not in data:
+#             return jsonify({'error': 'Text field is required'}), 400
+        
+#         text = data['text']
+#         strategy = data.get('strategy', 'auto')
+        
+#         if len(text) <= 1024:
+#             return jsonify({
+#                 'error': 'Text is too short for chunked summarization. Use /api/summarize instead'
+#             }), 400
+        
+#         result = summarizer._chunked_summarize(text, strategy)
+#         summary = result[0]['summary_text']
+        
+#         response_data = {
+#             'success': True,
+#             'summary': summary,
+#             'strategy_used': strategy,
+#             'original_length': len(text),
+#             'summary_length': len(summary),
+#             'method': 'chunked'
+#         }
+        
+#         if 'metadata' in result[0]:
+#             response_data['chunk_info'] = result[0]['metadata']
+        
+#         return jsonify(response_data), 200
+        
+#     except Exception as e:
+#         return jsonify({
+#             'success': False,
+#             'error': str(e)
+#         }), 500
+
+
+# @app.route('/api/process-blog', methods=['POST'])
+# def process_blog():
+#     try:
+#         data = request.get_json()
+        
+#         if not data or 'text' not in data:
+#             return jsonify({'error': 'Text field is required'}), 400
+        
+#         text = data['text']
+#         strategy = data.get('strategy', 'auto')
+        
+#         if not text or len(text.strip()) == 0:
+#             return jsonify({'error': 'Text cannot be empty'}), 400
+        
+#         classifications = classifier.classify(text)
+#         summary_result = summarizer.summarize(text, strategy=strategy)
+#         summary = summary_result[0]['summary_text']
+        
+#         response_data = {
+#             'success': True,
+#             'classifications': classifications,
+#             'summary': summary,
+#             'metadata': {
+#                 'original_length': len(text),
+#                 'summary_length': len(summary),
+#                 'strategy_used': strategy,
+#                 'num_categories': len(classifications)
+#             }
+#         }
+        
+#         if 'metadata' in summary_result[0]:
+#             response_data['metadata']['chunk_info'] = summary_result[0]['metadata']
+        
+#         return jsonify(response_data), 200
+        
+#     except Exception as e:
+#         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+
+
+
+@app.route('/api/extract-keywords', methods=['POST'])
+def extract_keywords():
+    try:
+        data = request.get_json()
+        
+        if not data or 'text' not in data or 'category' not in data:
+            return jsonify({'error': 'Text and category required'}), 400
+        
+        text = data['text']
+        category = data['category']
+        auto_add = data.get('auto_add', False)
+        min_uniqueness = data.get('min_uniqueness_score', 0.2)
+        
+        result = extract_and_update_keywords(
+            text, 
+            category, 
+            auto_add=auto_add,
+            min_uniqueness_score=min_uniqueness
         )
         
-        backend_service.update_blog_status(blog_id, "completed")
-        
         return jsonify({
             'success': True,
-            'blog_id': blog_id,
-            'classifications': classifications,
-            'summary': summary,
-            'metadata': metadata,
-            'backend_response': backend_response
+            'result': result
         }), 200
         
     except Exception as e:
-        try:
-            if 'blog_id' in locals():
-                backend_service.update_blog_status(blog_id, "failed")
-        except:
-            pass
-        
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/backend-health', methods=['GET'])
-def check_backend_health():
+@app.route('/api/process-and-extract', methods=['POST'])
+def process_and_extract():
     try:
-        health = backend_service.health_check()
-        return jsonify({'success': True, 'backend_health': health}), 200
+        data = request.get_json()
+        
+        if not data or 'text' not in data:
+            return jsonify({'error': 'No text provided'}), 400
+        
+        text = data['text']
+        auto_add = data.get('auto_add', False)
+        
+        classifications = classifier.classify(text)
+        
+        if not classifications:
+            return jsonify({'error': 'No category classified'}), 400
+        
+        top_category = classifications[0]['category']
+        
+        keyword_result = extract_and_update_keywords(
+            text,
+            top_category,
+            auto_add=auto_add
+        )
+        
+        return jsonify({
+            'success': True,
+            'classifications': classifications,
+            'keyword_extraction': keyword_result
+        }), 200
+        
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 503
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 if __name__ == '__main__':
